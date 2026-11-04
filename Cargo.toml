@@ -1,0 +1,24 @@
+[package]
+name = "ce-migrate"
+version = "0.1.0"
+edition = "2021"
+description = "Migrate a canister's state onto a cloud engine, and verify it landed byte-for-byte."
+
+[[bin]]
+name = "ce-migrate"
+path = "src/main.rs"
+
+[dependencies]
+ic-agent = "0.39"
+candid = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+clap = { version = "4", features = ["derive"] }
+sha2 = "0.10"
+hex = "0.4"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+# To load PKCS8 keys, which is how `icp identity export` writes them (its
+# default key is secp256k1). ic-agent's own from_pem only reads SEC1.
+k256 = { version = "0.13", features = ["pkcs8", "pem"] }
+p256 = { version = "0.13", features = ["pkcs8", "pem"] }
