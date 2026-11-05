@@ -37,6 +37,10 @@ pub struct Options {
     /// default, so migrating into a canister that is not empty is refused
     /// before anything is touched, since it would overwrite that state.
     pub force: bool,
+    /// Principals allowed to differ between the source and target controller
+    /// sets. The target is otherwise expected to carry the same controllers as
+    /// the source, and a difference is a hard stop.
+    pub accept: Vec<Principal>,
 }
 
 fn controls(controllers: &[Principal], who: Principal) -> bool {
@@ -73,6 +77,7 @@ async fn ensure_control(agent: &Agent, canister: Principal, me: Principal) -> Re
 /// This is the second half of a staged migration: `migrate` leaves a verified
 /// snapshot on the target, and this applies it. For a large canister that
 /// saves streaming the whole thing a second time.
+#[allow(clippy::too_many_arguments)]
 pub async fn load(
     agent: &Agent,
     me: Principal,
@@ -81,6 +86,7 @@ pub async fn load(
     snapshot: Option<Vec<u8>>,
     start: bool,
     delete_source: bool,
+    accept: &[Principal],
 ) -> Result<()> {
     ensure_control(agent, target, me).await?;
     // If we are going to delete the source, prove we can before touching the
@@ -88,6 +94,11 @@ pub async fn load(
     if delete_source {
         let source = source.ok_or_else(|| anyhow::anyhow!("--delete-source needs --source"))?;
         ensure_control(agent, source, me).await?;
+    }
+
+    // With a source to compare against, hold the target to the same controllers.
+    if let Some(source) = source {
+        ensure_controllers_match(agent, source, target, accept).await?;
     }
 
     let snapshot = match snapshot {
@@ -131,6 +142,44 @@ pub async fn load(
     }
 
     Ok(())
+}
+
+/// Fails unless the target's controllers match the source's, once the accepted
+/// principals are set aside. The target should end up controlled by the same
+/// parties as the source, so a difference means it was provisioned wrong, which
+/// is caught here before any state moves. A principal passed with `--accept`
+/// (the provider's own principal, say, or the source-side console) is allowed
+/// to sit on one side only.
+async fn ensure_controllers_match(
+    agent: &Agent,
+    source: Principal,
+    target: Principal,
+    accepted: &[Principal],
+) -> Result<()> {
+    let (src, _) = ic::status(agent, source).await?;
+    let (tgt, _) = ic::status(agent, target).await?;
+
+    let unaccounted = |p: &&Principal| !accepted.contains(p);
+    let only_source: Vec<_> = src.iter().filter(|p| !tgt.contains(p)).filter(unaccounted).collect();
+    let only_target: Vec<_> = tgt.iter().filter(|p| !src.contains(p)).filter(unaccounted).collect();
+
+    if only_source.is_empty() && only_target.is_empty() {
+        println!("  controller sets match");
+        return Ok(());
+    }
+
+    println!("  controller mismatch:");
+    for p in &only_source {
+        println!("    on source only: {p}");
+    }
+    for p in &only_target {
+        println!("    on target only: {p}");
+    }
+    bail!(
+        "the target's controllers do not match the source's. Fix the target's controllers, \
+         or pass --accept <principal> for each difference that is expected (e.g. a provider \
+         principal that controls the target but not the source)."
+    )
 }
 
 /// Fails if the target already holds code or a snapshot, so a migration never
@@ -191,6 +240,9 @@ pub async fn migrate(
     ensure_control(agent, source, me).await?;
     ensure_control(agent, target, me).await?;
     println!("  controller check: this identity controls both canisters");
+
+    // The target should be controlled by the same parties as the source.
+    ensure_controllers_match(agent, source, target, &opts.accept).await?;
 
     // Refuse to clobber a target that already holds something, unless forced.
     if !opts.force {

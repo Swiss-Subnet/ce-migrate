@@ -70,6 +70,11 @@ enum Command {
         /// default; migrating into a non-empty canister is refused.
         #[arg(long)]
         force: bool,
+        /// A principal allowed to differ between the source and target
+        /// controller sets. Repeat for several. The target is otherwise held
+        /// to the same controllers as the source.
+        #[arg(long = "accept-controller")]
+        accept_controller: Vec<Principal>,
     },
     /// Load a snapshot that is already staged on the target, without
     /// re-transferring it. Finishes a `migrate` run, so a large canister moves
@@ -91,6 +96,11 @@ enum Command {
         /// Delete the source after loading. Requires --source. Off by default.
         #[arg(long)]
         delete_source: bool,
+        /// A principal allowed to differ between the source and target
+        /// controller sets, checked only when --source is given. Repeat for
+        /// several.
+        #[arg(long = "accept-controller")]
+        accept_controller: Vec<Principal>,
     },
     /// Compare an existing source snapshot against a target snapshot, and the
     /// two live module hashes. Reads only.
@@ -176,6 +186,7 @@ async fn main() -> Result<()> {
             start,
             delete_source,
             force,
+            accept_controller,
         } => {
             if (start || delete_source) && !load {
                 anyhow::bail!("--start and --delete-source require --load");
@@ -191,6 +202,7 @@ async fn main() -> Result<()> {
                     start,
                     delete_source,
                     force,
+                    accept: accept_controller,
                 },
             )
             .await?;
@@ -201,6 +213,7 @@ async fn main() -> Result<()> {
             snapshot,
             start,
             delete_source,
+            accept_controller,
         } => {
             if delete_source && source.is_none() {
                 anyhow::bail!("--delete-source requires --source");
@@ -209,7 +222,17 @@ async fn main() -> Result<()> {
                 Some(h) => Some(snapshot_id(&h)?),
                 None => None,
             };
-            migrate::load(&agent, me, target, source, snapshot, start, delete_source).await?;
+            migrate::load(
+                &agent,
+                me,
+                target,
+                source,
+                snapshot,
+                start,
+                delete_source,
+                &accept_controller,
+            )
+            .await?;
         }
         Command::Verify {
             source,

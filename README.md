@@ -21,6 +21,13 @@ tool hashes the whole snapshot on both ends and compares:
 If every check passes, the target holds the same state as the source, down to
 the byte.
 
+Before it moves anything it also checks, as a safeguard, that the target is
+empty and that its controllers match the source's. The target should be
+controlled by the same parties as the source, so a difference is a hard stop.
+Pass `--accept-controller <principal>` for each principal that is expected to
+differ, for instance a provider principal that controls the target but not the
+source, or a console that controls the source but not the target.
+
 ## The one assumption
 
 Your provider gives you two canisters, the source you already run and an empty
