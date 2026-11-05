@@ -3,6 +3,8 @@ name = "ce-migrate"
 version = "0.1.0"
 edition = "2021"
 description = "Migrate a canister's state onto a cloud engine, and verify it landed byte-for-byte."
+license = "MIT"
+repository = "https://github.com/Swiss-Subnet/ce-migrate"
 
 [[bin]]
 name = "ce-migrate"
